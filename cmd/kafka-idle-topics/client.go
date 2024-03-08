@@ -2,13 +2,14 @@ package main
 
 import (
 	"fmt"
-	"github.com/IBM/sarama"
 	"log"
 	"os"
 	"reflect"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/IBM/sarama"
 )
 
 type KafkaIdleTopics struct {
@@ -27,6 +28,8 @@ type KafkaIdleTopics struct {
 	waitForTopicEvaluation   sync.WaitGroup
 	topicPartitionMap        map[string][]int32
 	DeleteCandidates         map[string]bool
+	kafkaGssapiServicename   string
+	kafkaGssapiKeytab        string
 }
 
 /*
@@ -301,18 +304,26 @@ func (c *KafkaIdleTopics) generateClientConfigs(securityContext string) *sarama.
 	clientConfigs.Consumer.Return.Errors = true
 	clientConfigs.Consumer.Offsets.AutoCommit.Enable = true
 	clientConfigs.Consumer.Offsets.AutoCommit.Interval = time.Duration(10) * time.Millisecond
-	if securityContext == "plain_tls" {
+
+	switch securityContext {
+	case "plain_tls", "plain":
 		clientConfigs.Net.SASL.Enable = true
 		clientConfigs.Net.SASL.User = c.kafkaUsername
 		clientConfigs.Net.SASL.Password = c.kafkaPassword
-		clientConfigs.Net.TLS.Enable = true
-	} else if securityContext == "plain" {
+
+	case "gssapi_tls", "gssapi":
 		clientConfigs.Net.SASL.Enable = true
-		clientConfigs.Net.SASL.User = c.kafkaUsername
-		clientConfigs.Net.SASL.Password = c.kafkaPassword
-	} else if securityContext == "tls" {
-		clientConfigs.Net.TLS.Enable = true
+		clientConfigs.Net.SASL.GSSAPI.AuthType = sarama.KRB5_KEYTAB_AUTH
+		clientConfigs.Net.SASL.GSSAPI.KeyTabPath = c.kafkaGssapiKeytab
+		clientConfigs.Net.SASL.GSSAPI.ServiceName = c.kafkaGssapiServicename
 	}
+
+	if strings.Contains(securityContext, "tls") {
+		clientConfigs.Net.TLS.Enable = true
+	} else {
+		clientConfigs.Net.TLS.Enable = false
+	}
+
 	return clientConfigs
 }
 

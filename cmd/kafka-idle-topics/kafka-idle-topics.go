@@ -30,6 +30,8 @@ func ReadCommands() *KafkaIdleTopics {
 	flag.Var(&thisInstance.hideDerivativeTopics, "hideTopicsPrefixes", "Disqualify provided prefixes from assessment. A comma delimited list. It also accepts a path to a file containing a list.")
 	flag.Var(&thisInstance.AllowList, "allowList", "A comma delimited list of topics to evaluate. It also accepts a path to a file containing a list of topics.")
 	flag.Var(&thisInstance.DisallowList, "disallowList", "A comma delimited list of topics to exclude from evaluation. It also accepts a path to a file containing a list of topics.")
+	flag.StringVar(&thisInstance.kafkaGssapiKeytab, "gssapi-keytab", "", "keytab filepath in the GSSAPI module. Can be set using env variable KAFKA_GSSAPI_KEYTAB")
+	flag.StringVar(&thisInstance.kafkaGssapiServicename, "gssapi-svcname", "", "Kafka service in the GSSAPI module. Can be set using env variable KAFKA_GSSAPI_SERVICENAME")
 	versionFlag := flag.Bool("version", false, "Print the current version and exit")
 
 	flag.Parse()
@@ -42,17 +44,36 @@ func ReadCommands() *KafkaIdleTopics {
 	return thisInstance
 }
 
+func assertNotEmpty(property, value, message string) {
+	if value == "" {
+		log.Fatalf("%s %s", property, message)
+	}
+}
+
+func getOsEnvOverride(property *string, envVar string) {
+	if *property == "" {
+		*property, _ = GetOSEnvVar(envVar)
+	}
+}
 func main() {
 
 	myChecker := ReadCommands()
 
-	if myChecker.kafkaSecurity == "plain_tls" || myChecker.kafkaSecurity == "plain" {
-		// If the parameters are empty, go fetch from env
-		if myChecker.kafkaUrl == "" || myChecker.kafkaUsername == "" || myChecker.kafkaPassword == "" {
-			myChecker.kafkaUrl, _ = GetOSEnvVar("KAFKA_BOOTSTRAP")
-			myChecker.kafkaUsername, _ = GetOSEnvVar("KAFKA_USERNAME")
-			myChecker.kafkaPassword, _ = GetOSEnvVar("KAFKA_PASSWORD")
-		}
+	getOsEnvOverride(&myChecker.kafkaUrl, "KAFKA_BOOTSTRAP")
+
+	switch myChecker.kafkaSecurity {
+	case "plain_tls", "plain":
+		getOsEnvOverride(&myChecker.kafkaUsername, "KAFKA_USERNAME")
+		getOsEnvOverride(&myChecker.kafkaPassword, "KAFKA_PASSWORD")
+
+		assertNotEmpty("Username", myChecker.kafkaUsername, "is required for PLAIN mechanism")
+		assertNotEmpty("Password", myChecker.kafkaPassword, "is required for PLAIN mechanism")
+	case "gssapi_tls", "gssapi":
+		getOsEnvOverride(&myChecker.kafkaGssapiKeytab, "KAFKA_GSSAPI_KEYTAB")
+		getOsEnvOverride(&myChecker.kafkaGssapiServicename, "KAFKA_GSSAPI_SERVICENAME")
+
+		assertNotEmpty("Keytab", myChecker.kafkaGssapiKeytab, "is required for GSSAPI mechanism")
+		assertNotEmpty("Servicename", myChecker.kafkaGssapiServicename, "is required for GSSAPI mechanism")
 	}
 
 	if myChecker.topicsIdleMinutes == 0 {
