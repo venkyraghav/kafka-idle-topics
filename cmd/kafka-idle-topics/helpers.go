@@ -11,8 +11,6 @@ import (
 	"unicode"
 )
 
-var Version = "1.1"
-
 type StringArrayFlag map[string]bool
 
 func (i *StringArrayFlag) String() string {

@@ -9,6 +9,26 @@ import (
 	"strings"
 )
 
+const (
+	VERSION                  = "1.2"
+	PROGNAME                 = "kafka-idle-topics"
+	GSSAPI                   = "GSSAPI"
+	PLAIN                    = "PLAIN"
+	GSSAPI_TLS               = "GSSAPI_TLS"
+	PLAIN_TLS                = "PLAIN_TLS"
+	TLS                      = "TLS"
+	NONE                     = "NONE"
+	KAFKA_BOOTSTRAP          = "KAFKA_BOOTSTRAP"
+	KAFKA_USERNAME           = "KAFKA_USERNAME"
+	KAFKA_PASSWORD           = "KAFKA_PASSWORD"
+	KAFKA_GSSAPI_KEYTAB      = "KAFKA_GSSAPI_KEYTAB"
+	KAFKA_GSSAPI_SERVICENAME = "KAFKA_GSSAPI_SERVICENAME"
+	KAFKA_IDLE_MINUTES       = "KAFKA_IDLE_MINUTES"
+	PRODUCTION               = "PRODUCTION"
+	CONSUMPTION              = "CONSUMPTION"
+	STORAGE                  = "STORAGE"
+)
+
 func NewKafkaIdleTopics() *KafkaIdleTopics {
 	thisInstance := KafkaIdleTopics{}
 	thisInstance.DeleteCandidates = make(map[string]bool)
@@ -30,15 +50,20 @@ func ReadCommands() *KafkaIdleTopics {
 	flag.Var(&thisInstance.hideDerivativeTopics, "hideTopicsPrefixes", "Disqualify provided prefixes from assessment. A comma delimited list. It also accepts a path to a file containing a list.")
 	flag.Var(&thisInstance.AllowList, "allowList", "A comma delimited list of topics to evaluate. It also accepts a path to a file containing a list of topics.")
 	flag.Var(&thisInstance.DisallowList, "disallowList", "A comma delimited list of topics to exclude from evaluation. It also accepts a path to a file containing a list of topics.")
-	flag.StringVar(&thisInstance.kafkaGssapiKeytab, "gssapi-keytab", "", "keytab filepath in the GSSAPI module. Can be set using env variable KAFKA_GSSAPI_KEYTAB")
-	flag.StringVar(&thisInstance.kafkaGssapiServicename, "gssapi-svcname", "", "Kafka service in the GSSAPI module. Can be set using env variable KAFKA_GSSAPI_SERVICENAME")
+	flag.StringVar(&thisInstance.kafkaGssapiKeytab, "gssapiKeytab", "", "keytab filepath in the GSSAPI module. Can be set using env variable KAFKA_GSSAPI_KEYTAB")
+	flag.StringVar(&thisInstance.kafkaGssapiServicename, "gssapiServicename", "", "Kafka service in the GSSAPI module. Can be set using env variable KAFKA_GSSAPI_SERVICENAME")
 	versionFlag := flag.Bool("version", false, "Print the current version and exit")
 
 	flag.Parse()
 
 	if *versionFlag {
-		fmt.Printf("kafka-idle-topics: %s\n", Version)
+		fmt.Printf("%s: %s\n", PROGNAME, VERSION)
 		os.Exit(0)
+	}
+
+	thisInstance.kafkaSecurity = strings.ToUpper(thisInstance.kafkaSecurity)
+	if thisInstance.skip != "" {
+		thisInstance.skip = strings.ToUpper(thisInstance.skip)
 	}
 
 	return thisInstance
@@ -59,25 +84,25 @@ func main() {
 
 	myChecker := ReadCommands()
 
-	getOsEnvOverride(&myChecker.kafkaUrl, "KAFKA_BOOTSTRAP")
+	getOsEnvOverride(&myChecker.kafkaUrl, KAFKA_BOOTSTRAP)
 
 	switch myChecker.kafkaSecurity {
-	case "plain_tls", "plain":
-		getOsEnvOverride(&myChecker.kafkaUsername, "KAFKA_USERNAME")
-		getOsEnvOverride(&myChecker.kafkaPassword, "KAFKA_PASSWORD")
+	case PLAIN_TLS, PLAIN:
+		getOsEnvOverride(&myChecker.kafkaUsername, KAFKA_USERNAME)
+		getOsEnvOverride(&myChecker.kafkaPassword, KAFKA_PASSWORD)
 
 		assertNotEmpty("Username", myChecker.kafkaUsername, "is required for PLAIN mechanism")
 		assertNotEmpty("Password", myChecker.kafkaPassword, "is required for PLAIN mechanism")
-	case "gssapi_tls", "gssapi":
-		getOsEnvOverride(&myChecker.kafkaGssapiKeytab, "KAFKA_GSSAPI_KEYTAB")
-		getOsEnvOverride(&myChecker.kafkaGssapiServicename, "KAFKA_GSSAPI_SERVICENAME")
+	case GSSAPI_TLS, GSSAPI:
+		getOsEnvOverride(&myChecker.kafkaGssapiKeytab, KAFKA_GSSAPI_KEYTAB)
+		getOsEnvOverride(&myChecker.kafkaGssapiServicename, KAFKA_GSSAPI_SERVICENAME)
 
 		assertNotEmpty("Keytab", myChecker.kafkaGssapiKeytab, "is required for GSSAPI mechanism")
 		assertNotEmpty("Servicename", myChecker.kafkaGssapiServicename, "is required for GSSAPI mechanism")
 	}
 
 	if myChecker.topicsIdleMinutes == 0 {
-		envVar, err := GetOSEnvVar("KAFKA_IDLE_MINUTES")
+		envVar, err := GetOSEnvVar(KAFKA_IDLE_MINUTES)
 		if err != nil {
 			myChecker.topicsIdleMinutes = 0
 		} else {
@@ -95,7 +120,7 @@ func main() {
 	// Extract Topics in Cluster
 	myChecker.topicPartitionMap = myChecker.getClusterTopics(myChecker.getAdminClient(myChecker.kafkaSecurity))
 
-	if !isInSlice("production", stepsToSkip) {
+	if !isInSlice(PRODUCTION, stepsToSkip) {
 		if myChecker.topicsIdleMinutes == 0 {
 			myChecker.filterActiveProductionTopics(myChecker.getClusterClient(myChecker.kafkaSecurity))
 		} else {
@@ -103,11 +128,11 @@ func main() {
 		}
 	}
 
-	if !isInSlice("consumption", stepsToSkip) {
+	if !isInSlice(CONSUMPTION, stepsToSkip) {
 		myChecker.filterTopicsWithConsumerGroups(myChecker.getAdminClient(myChecker.kafkaSecurity))
 	}
 
-	if !isInSlice("storage", stepsToSkip) {
+	if !isInSlice(STORAGE, stepsToSkip) {
 		myChecker.filterEmptyTopics(myChecker.getClusterClient(myChecker.kafkaSecurity))
 	}
 

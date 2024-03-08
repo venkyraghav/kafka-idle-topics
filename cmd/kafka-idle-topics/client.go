@@ -299,26 +299,26 @@ func (c *KafkaIdleTopics) getClusterClient(securityContext string) sarama.Client
 
 func (c *KafkaIdleTopics) generateClientConfigs(securityContext string) *sarama.Config {
 	clientConfigs := sarama.NewConfig()
-	clientConfigs.ClientID = "kafka-idle-topics"
+	clientConfigs.ClientID = PROGNAME
 	clientConfigs.Producer.Return.Successes = true
 	clientConfigs.Consumer.Return.Errors = true
 	clientConfigs.Consumer.Offsets.AutoCommit.Enable = true
 	clientConfigs.Consumer.Offsets.AutoCommit.Interval = time.Duration(10) * time.Millisecond
 
 	switch securityContext {
-	case "plain_tls", "plain":
+	case PLAIN, PLAIN_TLS:
 		clientConfigs.Net.SASL.Enable = true
 		clientConfigs.Net.SASL.User = c.kafkaUsername
 		clientConfigs.Net.SASL.Password = c.kafkaPassword
 
-	case "gssapi_tls", "gssapi":
+	case GSSAPI, GSSAPI_TLS:
 		clientConfigs.Net.SASL.Enable = true
 		clientConfigs.Net.SASL.GSSAPI.AuthType = sarama.KRB5_KEYTAB_AUTH
 		clientConfigs.Net.SASL.GSSAPI.KeyTabPath = c.kafkaGssapiKeytab
 		clientConfigs.Net.SASL.GSSAPI.ServiceName = c.kafkaGssapiServicename
 	}
 
-	if strings.Contains(securityContext, "tls") {
+	if strings.Contains(securityContext, TLS) {
 		clientConfigs.Net.TLS.Enable = true
 	} else {
 		clientConfigs.Net.TLS.Enable = false
